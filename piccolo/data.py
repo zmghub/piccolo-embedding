@@ -1,9 +1,10 @@
+import os
 import random
 import torch
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, cast, TypeAlias
+from typing import Any, Sequence, cast, Union
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, RandomSampler
 
@@ -11,7 +12,7 @@ from piccolo.data_structures import PairRetriContrastRecord, PairScoredRecord, P
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-Tokenizer: TypeAlias = PreTrainedTokenizer | PreTrainedTokenizerFast
+# Tokenizer: TypeAlias = Union[PreTrainedTokenizer | PreTrainedTokenizerFast
 
 
 class UniCollator:
@@ -22,7 +23,7 @@ class UniCollator:
     for clustering and classification, we specially set the query max length to 512, 
     bcz for clustering and classification task, query('text') is ofent much longer than the pos/neg ('label') 
     '''
-    def __init__(self, tokenizer: Tokenizer, max_length: int, q_max_length: int = 64) -> None:
+    def __init__(self, tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast], max_length: int, q_max_length: int = 64) -> None:
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.q_max_length = q_max_length
@@ -117,11 +118,27 @@ class UniDataset(Dataset):
         hf_datasets: list[DatsetWithInfo],
         neg_num: int = 1,
         batch_size: int = 32,
-        max_samples: int | None = None,
+        max_samples: Union[int, str, None] = None,
     ):
         self.batch_size = batch_size
         self.hf_datasets = hf_datasets
-        self.max_samples = max_samples
+        if max_samples is not None:
+            if isinstance(max_samples, int):
+                self.max_samples = max_samples
+            elif isinstance(max_samples, str) and os.path.exists(max_samples):
+                self.max_samples = {}
+                meta_file = open(max_samples, 'r')
+                for line in meta_file.readlines():
+                    dataset_name, max_sample = line.strip().split(' ')
+                    max_sample = int(max_sample)
+                    if max_sample == -1:
+                        max_sample = None
+                    self.max_samples[dataset_name] = max_sample
+            else:
+                self.max_samples = None
+        else:
+            self.max_samples = None
+        print("max_samples: ", self.max_samples)
         self.name_dataset_map = {dataset.name: dataset.hf_dataset for dataset in hf_datasets}
         self.neg_num = neg_num
         self.query_prefix_map = {dataset.name: dataset.query_prefix for dataset in hf_datasets}
@@ -138,7 +155,11 @@ class UniDataset(Dataset):
     def create_or_refresh_data(self):
         self.task_batch_index_list: list[TaskBatchIndex] = []
         for dataset in self.hf_datasets:
-            max_samples = self.max_samples or len(dataset.hf_dataset)
+            dataset_basename = dataset.name.rsplit("_", 1)[0]
+            if self.max_samples is None or isinstance(self.max_samples, int):
+                max_samples = self.max_samples or len(dataset.hf_dataset)
+            else:
+                max_samples = self.max_samples[dataset_basename] or len(dataset.hf_dataset)
             batch_size = self.batch_size
             num_samples = (max_samples // batch_size) * batch_size
             buffer = []
@@ -203,7 +224,9 @@ class UniDataset(Dataset):
                 text_pos = record['text_pos']
             else:
                 assert False, 'type error'
-            text_neg = random.sample(record['text_neg'], min(10, len(record['text_neg']))) # TODO， hard code the neg num to 10
+            text_neg = random.sample(record['text_neg'], min(self.neg_num, len(record['text_neg'])))
+            while len(text_neg) < self.neg_num:
+                text_neg += random.sample(record['text_neg'], min(self.neg_num - len(text_neg), len(record['text_neg'])))
             if self.is_valid_text(text) and self.is_valid_text(text_pos):
                 pair_records.append(PairClsContrastRecord(text=text, text_pos=text_pos, text_neg=text_neg))
         return pair_records

@@ -1,18 +1,18 @@
 from dataclasses import dataclass
 
-@dataclass(slots=True)
+@dataclass()
 class PairRetriContrastRecord:
     text: str
     text_pos: str
     text_neg: list
 
-@dataclass(slots=True)
+@dataclass()
 class PairClsContrastRecord:
     text: str
     text_pos: str
     text_neg: list
 
-@dataclass(slots=True)
+@dataclass()
 class PairScoredRecord:
     text: str
     text_pair: str

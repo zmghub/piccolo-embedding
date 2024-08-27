@@ -14,6 +14,7 @@ class ModelArguments:
     # scaling layer and mrl Training
     use_scaling_layer: bool = field(default=False)
     use_mrl: bool = field(default=False)
+    use_all_pair: bool = field(default=True)
 
 @dataclass
 class DataArguments:
@@ -25,6 +26,7 @@ class DataArguments:
     doc_prefix: str = field(default='')
     # hard neg
     neg_num: int = field(default=1) # only affects retri_contrast_loss
+    max_sample_path: str = field(default='')
 
 @dataclass
 class STETrainingArguments(TrainingArguments):

@@ -103,7 +103,7 @@ def main():
     # DataLoader
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
     all_datasets = load_all_datasets(data_args.meta_paths, data_args.root_dirs, data_args.query_prefix, data_args.doc_prefix)
-    train_dataset = UniDataset(all_datasets, batch_size=data_args.batch_size, neg_num=data_args.neg_num)
+    train_dataset = UniDataset(all_datasets, batch_size=data_args.batch_size, neg_num=data_args.neg_num, max_samples=data_args.max_sample_path)
     data_collator = UniCollator(tokenizer=tokenizer, max_length=model_args.max_length)
  
     # Model
@@ -114,7 +114,8 @@ def main():
         add_scaling_layer=model_args.use_scaling_layer,
         use_mrl=model_args.use_mrl,
         extend_pe=model_args.extend_pe,
-        max_length=model_args.max_length
+        max_length=model_args.max_length,
+        use_all_pair=model_args.use_all_pair
     )
     model.embedder.encoder.config.pad_token_id = tokenizer.pad_token_id
     
@@ -140,6 +141,9 @@ def main():
                 f.writelines(f'list_name: {meta_path} \n') 
                 f.writelines(open(meta_path, 'r').readlines())
                 f.writelines('\n\n')
+        parameter_dict = {'model_args': asdict(model_args), 'data_args': asdict(data_args), 'train_args': asdict(training_args)}
+        with open(os.path.join(training_args.output_dir, 'parameters', 'param.yaml'), 'w') as yaml_file:
+            yaml.dump(parameter_dict, yaml_file)
 
     trainer.train()
 
@@ -155,4 +159,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # import pdb
+    # pdb.set_trace()
     main()

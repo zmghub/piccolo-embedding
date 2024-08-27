@@ -1,8 +1,9 @@
-ROOT=/data/workspace/piccolo-embedding
+ROOT=/mnt/z4/shumowu/aigc_ym/code/piccolo-embedding
 export PYTHONPATH=$ROOT:${PYTHONPATH}
 
 # SLURM Parameter
-GPUS_PER_NODE=1
+GPUS_PER_NODE=8
+MASTER_PORT=6000
 if [ -z "$WORLD_SIZE" ]; then  
     WORLD_SIZE=1  
     RANK=0
@@ -11,20 +12,20 @@ if [ -z "$WORLD_SIZE" ]; then
 fi
 
 # Hyper Parameter Start
-MODEL_NAME_OR_PATH=lier007/xiaobu-embedding-v2
-EPOCHS=100
-BATCH_SIZE=4
+MODEL_NAME_OR_PATH=/mnt/z4/shumowu/huggingface/hub/models--lier007--xiaobu-embedding-v2/snapshots/ee0b4ecdf5eb449e8240f2e3de2e10eeae877691
+EPOCHS=10
+BATCH_SIZE=8
 LR=1e-5
-NEG_NUM=2
+NEG_NUM=1
 DS_PATH=$ROOT/ds_config_zero1.json
 MAX_LENGTH=512
 META_PATHS=(
 meta_lists/piccolo-ft.txt
 )
 MAX_SAMPLE_PATH=meta_lists/maxnum.txt
-OUTPUT_DIR=/apdcephfs/kaiwu-group-z4/shumowu/aigc_ym/models/xiaobu-v2-wbrick
+OUTPUT_DIR=/mnt/z4/shumowu/aigc_ym/train_log/embedding/exp-0827-hardcase
 ROOT_DIRS=(
-/data/workspace/ceph/aigc_ym/datasets/
+/mnt/z4/shumowu/aigc_ym/datasets/
 )
 # Hyper Parameter End 
 

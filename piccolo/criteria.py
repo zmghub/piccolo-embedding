@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 
 class ContrastLoss(torch.nn.Module):
     def __init__(self, temperature: float = 0.05):
@@ -22,8 +23,8 @@ class RetriContrastLoss(ContrastLoss):
         self,
         text_embeddings: torch.Tensor,
         text_pos_embeddings: torch.Tensor,
-        text_neg_embeddings: torch.Tensor | None,
-        text_neg_index: torch.Tensor | None,
+        text_neg_embeddings: Union[torch.Tensor, None],
+        text_neg_index: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         if text_neg_embeddings is None:
             sim_matrix = torch.cosine_similarity(
@@ -97,7 +98,7 @@ class ClsContrastLoss(torch.nn.Module):
         text_neg_embeddings: torch.Tensor,
         ) -> torch.Tensor:
         bs = text_embeddings.shape[0]
-        assert text_neg_embeddings.shape[0] % bs == 0, 'neg num is not equal for each sample'
+        assert text_neg_embeddings.shape[0] % bs == 0, f"neg num is not equal for each sample: {bs}, {text_neg_embeddings.shape[0]}"
         neg_num = int(text_neg_embeddings.shape[0] // bs)
 
         sim_neg_matrix = torch.cosine_similarity(
