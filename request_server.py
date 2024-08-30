@@ -12,6 +12,7 @@ class TextInferenceService:
         self.app = Flask(__name__)
         # 设置服务器监听的端口
         self.port = port
+        self.model_path = model_path
         
         # 定义POST请求的处理函数
         self.app.add_url_rule('/infer', "infer", self.infer, methods=['POST'])
@@ -32,9 +33,12 @@ class TextInferenceService:
         
         # 调用模型进行推理
         result = self.model.encode(input_data, normalize_embeddings=True)
+        print(f"model path: {self.model_path}, port: {self.port}", flush=True)
+        print(f"input num: {len(input_data)}, result shape: {result.shape}, input sample: {input_data[0]}", flush=True)
         result = result.tolist()
         if not list_result:
             result = result[0]
+            
         # 返回推理结果
         return jsonify({'result': result})
     

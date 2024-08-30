@@ -27,6 +27,8 @@ class DataArguments:
     # hard neg
     neg_num: int = field(default=1) # only affects retri_contrast_loss
     max_sample_path: str = field(default='')
+    pos_key: str = field(default='text_pos')
+    neg_key: str = field(default='text_neg')
 
 @dataclass
 class STETrainingArguments(TrainingArguments):

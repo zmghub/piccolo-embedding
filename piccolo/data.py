@@ -119,7 +119,11 @@ class UniDataset(Dataset):
         neg_num: int = 1,
         batch_size: int = 32,
         max_samples: Union[int, str, None] = None,
+        pos_key: str = 'text_pos',
+        neg_key: str = 'text_neg'
     ):
+        self.pos_key = pos_key
+        self.neg_key = neg_key
         self.batch_size = batch_size
         self.hf_datasets = hf_datasets
         if max_samples is not None:
@@ -138,8 +142,10 @@ class UniDataset(Dataset):
                 self.max_samples = None
         else:
             self.max_samples = None
-        print("max_samples: ", self.max_samples)
+        print(f"pos_key: {self.pos_key}, neg_key: {self.neg_key}")
         self.name_dataset_map = {dataset.name: dataset.hf_dataset for dataset in hf_datasets}
+        for k, v in self.name_dataset_map.items():
+            print(f"{k}: {len(v)}")
         self.neg_num = neg_num
         self.query_prefix_map = {dataset.name: dataset.query_prefix for dataset in hf_datasets}
         self.passage_prefix_map = {dataset.name: dataset.passage_prefix for dataset in hf_datasets}
@@ -154,12 +160,14 @@ class UniDataset(Dataset):
     
     def create_or_refresh_data(self):
         self.task_batch_index_list: list[TaskBatchIndex] = []
+        print(f"max_samples: {self.max_samples}")
         for dataset in self.hf_datasets:
             dataset_basename = dataset.name.rsplit("_", 1)[0]
             if self.max_samples is None or isinstance(self.max_samples, int):
                 max_samples = self.max_samples or len(dataset.hf_dataset)
             else:
                 max_samples = self.max_samples[dataset_basename] or len(dataset.hf_dataset)
+            print(f"dataset: {dataset.name}, sample nums per epoch: {max_samples}")
             batch_size = self.batch_size
             num_samples = (max_samples // batch_size) * batch_size
             buffer = []
@@ -188,11 +196,11 @@ class UniDataset(Dataset):
 
         def process_records(record):
             text = record['text']
-            if isinstance(record['text_pos'], list): # random sample a positive
-                assert len(record['text_pos']) >= 1, 'text pos num should be at least 1'
-                text_pos = random.sample(record['text_pos'], 1)[0]
+            if isinstance(record[self.pos_key], list): # random sample a positive
+                assert len(record[self.pos_key]) >= 1, 'text pos num should be at least 1'
+                text_pos = random.sample(record[self.pos_key], 1)[0]
             else:
-                text_pos = record['text_pos']
+                text_pos = record[self.pos_key]
  
             if not (self.is_valid_text(text) and self.is_valid_text(text_pos)):
                 # skip current sample and random sample an index 
@@ -201,7 +209,7 @@ class UniDataset(Dataset):
                     random_index = random.sample(range(len(hf_dataset)), k=1)[0]
                 return process_records(hf_dataset[random_index])
 
-            text_neg = random.sample(record['text_neg'], min(self.neg_num, len(record['text_neg'])))
+            text_neg = random.sample(record[self.neg_key], min(self.neg_num, len(record[self.neg_key])))
             text = self.query_prefix_map[task_name] + text
             text_pos = self.passage_prefix_map[task_name] + text_pos
             text_neg = [self.passage_prefix_map[task_name] + neg for neg in text_neg]
@@ -217,16 +225,16 @@ class UniDataset(Dataset):
     def get_pair_cls_contrast_records(self, records, task_name):
         pair_records = []
         for record in records:
-            text, text_pos, text_neg = record['text'], record['text_pos'], record['text_neg']
-            if isinstance(record['text_pos'], list):
-                text_pos = random.sample(record['text_pos'], 1)[0]
-            elif isinstance(record['text_pos'], str):
-                text_pos = record['text_pos']
+            text, text_pos, text_neg = record['text'], record[self.pos_key], record[self.neg_key]
+            if isinstance(record[self.pos_key], list):
+                text_pos = random.sample(record[self.pos_key], 1)[0]
+            elif isinstance(record[self.pos_key], str):
+                text_pos = record[self.pos_key]
             else:
                 assert False, 'type error'
-            text_neg = random.sample(record['text_neg'], min(self.neg_num, len(record['text_neg'])))
+            text_neg = random.sample(record[self.neg_key], min(self.neg_num, len(record[self.neg_key])))
             while len(text_neg) < self.neg_num:
-                text_neg += random.sample(record['text_neg'], min(self.neg_num - len(text_neg), len(record['text_neg'])))
+                text_neg += random.sample(record[self.neg_key], min(self.neg_num - len(text_neg), len(record[self.neg_key])))
             if self.is_valid_text(text) and self.is_valid_text(text_pos):
                 pair_records.append(PairClsContrastRecord(text=text, text_pos=text_pos, text_neg=text_neg))
         return pair_records
