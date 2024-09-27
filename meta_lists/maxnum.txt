@@ -1,4 +1,2 @@
-popular_items_query_retri.dataset -1
-popular_hardcase_retri.dataset -1
-popular_items_query_cls.dataset -1
+gen_0806_retri.dataset 10000
 brick_query_retri.dataset 500

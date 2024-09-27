@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import ClassVar, Literal, Type, TypeVar, cast, Union
 from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel  # type: ignore
-from piccolo.criteria import CoSentLoss, ClsContrastLoss, RetriContrastLoss
+from piccolo.criteria import CoSentLoss, ClsContrastLoss, RetriContrastLoss, RetriCoSentLoss
 
 class PoolingStrategy(str, Enum):
     cls = 'cls'
@@ -16,6 +16,7 @@ class InBatchNegLossType(str, Enum):
     cosent = 'cosent'
     retri_contrast = 'retri_contrast'
     cls_contrast = 'cls_contrast'
+    retri_cosent = 'retri_cosent'
 
 def build_loss(loss_type, temperature, **kwargs):
     loss_type = InBatchNegLossType(loss_type)
@@ -25,6 +26,8 @@ def build_loss(loss_type, temperature, **kwargs):
         return ClsContrastLoss(temperature)
     elif loss_type == InBatchNegLossType.retri_contrast:
         return RetriContrastLoss(temperature, **kwargs)
+    elif loss_type == InBatchNegLossType.retri_cosent:
+        return RetriCoSentLoss(temperature, **kwargs)
     # match loss_type:
     #     case InBatchNegLossType.cosent:
     #         return CoSentLoss(temperature)
@@ -154,14 +157,16 @@ class STEmbedder(EmbedderForTrain):
         use_mrl: bool = False,
         extend_pe: bool = False,
         max_length: int = 512,
-        use_all_pair: bool = True
+        use_all_pair: bool = True,
+        mixcse: float = -1
     ):
         pretrained_model = load_hf_pretrained_model(model_name_or_path)
         embedder = StrategyEmbedderClsMap[PoolingStrategy(embedding_strategy)](pretrained_model)
         super().__init__(embedder)
-        self.retri_contrst_loss = build_loss('retri_contrast', temperature=0.01, use_all_pair=use_all_pair)
+        self.retri_contrst_loss = build_loss('retri_contrast', temperature=0.01, use_all_pair=use_all_pair, mixcse=mixcse)
         self.cosent_loss = build_loss('cosent', temperature=0.05)
         self.cls_contrast_loss = build_loss('cls_contrast', temperature=0.05)
+        self.retri_cosent_loss = build_loss('retri_cosent', temperature=0.05)
         self.use_mrl = use_mrl
         self.add_scaling_layer = add_scaling_layer
 
@@ -250,6 +255,19 @@ class STEmbedder(EmbedderForTrain):
         print('triplet loss: ', loss)
         return {'loss': loss}
 
+    def compute_retri_cosent_loss(self, text_ids: torch.Tensor, text_pair_ids: torch.Tensor, labels: torch.Tensor, type: str = 'retri_cosent'):
+        text_embeddings = self.get_embedding(text_ids)
+        text_pair_embeddings = self.get_embedding(text_pair_ids)
+        if self.use_mrl:
+            loss = torch.tensor(0.0, device=text_embeddings.device)
+            for num_feat in self.mrl_nesting_list:
+                emb, emb_pair = text_embeddings[..., :num_feat], text_pair_embeddings[..., :num_feat]
+                loss += self.retri_cosent_loss(emb, emb_pair, labels) / len(self.mrl_nesting_list)
+        else:
+            loss = self.retri_cosent_loss(text_embeddings, text_pair_embeddings, labels)
+        print('retri_cosent loss: ', loss)
+        return {'loss': loss}
+    
     def compute_cosent_loss(self, text_ids: torch.Tensor, text_pair_ids: torch.Tensor, labels: torch.Tensor, type: str = 'cosent'):
         text_embeddings = self.get_embedding(text_ids)
         text_pair_embeddings = self.get_embedding(text_pair_ids)
@@ -273,5 +291,7 @@ class STEmbedder(EmbedderForTrain):
             return self.compute_retri_contrast_loss(**kwargs)
         elif kwargs['type'] == 'cosent':
             return self.compute_cosent_loss(**kwargs)
+        elif kwargs['type'] == 'retri_cosent':
+            return self.compute_retri_cosent_loss(**kwargs)
         else:
             raise NotImplementedError('not suuport current input kwargs')

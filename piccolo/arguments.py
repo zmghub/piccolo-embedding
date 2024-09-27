@@ -15,6 +15,7 @@ class ModelArguments:
     use_scaling_layer: bool = field(default=False)
     use_mrl: bool = field(default=False)
     use_all_pair: bool = field(default=True)
+    mixcse: float = field(default=-1)
 
 @dataclass
 class DataArguments:

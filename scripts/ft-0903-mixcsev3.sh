@@ -23,7 +23,7 @@ META_PATHS=(
 meta_lists/piccolo-ft.txt
 )
 MAX_SAMPLE_PATH=meta_lists/maxnum.txt
-OUTPUT_DIR=/mnt/z4/shumowu/aigc_ym/train_log/embedding/exp-0827-hardcase
+OUTPUT_DIR=/mnt/z4/shumowu/aigc_ym/train_log/embedding/exp-0903-mixcsev3-nocaption
 ROOT_DIRS=(
 /mnt/z4/shumowu/aigc_ym/datasets/
 )
@@ -37,6 +37,7 @@ model_args=(
     "--doc_prefix=''"
     "--use_scaling_layer=True"
     "--use_mrl=True"
+    "--mixcse=0.2"
 )
 
 data_args=(
@@ -44,6 +45,8 @@ data_args=(
     "--root_dirs" "${ROOT_DIRS[@]}"
     "--neg_num=$NEG_NUM"
     "--max_sample_path=$MAX_SAMPLE_PATH"
+    "--pos_key=text_pos_name"
+    "--neg_key=text_neg_name"
 )
 
 train_args=(
@@ -58,7 +61,7 @@ train_args=(
     "--logging_steps=500"
     "--save_safetensors=False"
     "--report_to=tensorboard"
-    "--save_strategy=epoch"
+    "--save_strategy=no"
     "--per_device_train_batch_size=1"
 )
 

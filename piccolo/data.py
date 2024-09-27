@@ -8,7 +8,7 @@ from typing import Any, Sequence, cast, Union
 from datasets import Dataset as HfDataset
 from torch.utils.data import Dataset, RandomSampler
 
-from piccolo.data_structures import PairRetriContrastRecord, PairScoredRecord, PairClsContrastRecord
+from piccolo.data_structures import PairRetriContrastRecord, PairScoredRecord, PairClsContrastRecord, PairRetriScoredRecord
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
@@ -84,6 +84,25 @@ class UniCollator:
                 'text_pair_ids': cast(torch.Tensor, text_pair_ids),
                 'labels': labels,
                 'type': 'cosent',
+            }
+        elif isinstance(records[0], PairRetriScoredRecord):
+            texts = [record.text for record in records]
+            texts_pair, labels = [], []
+            texts_pair_index = []
+            for i, record in enumerate(records):
+                texts_pair.extend(record.text_pair)
+                labels.extend(record.label)
+                texts_pair_index.extend([i] * len(record.text_pair))
+                
+            text_ids = self.tokenizer(texts, padding=True, max_length=self.q_max_length, truncation=True, return_tensors='pt',)['input_ids']
+            text_pair_ids = self.tokenizer(texts_pair, padding=True, max_length=self.max_length, truncation=True, return_tensors='pt',)['input_ids']
+            labels = torch.tensor(labels, dtype=torch.float32)
+            
+            return {
+                'text_ids': cast(torch.Tensor, text_ids),
+                'text_pair_ids': cast(torch.Tensor, text_pair_ids),
+                'labels': labels,
+                'type': 'retri_cosent'
             }
         else:
             raise NotImplementedError("only support pairscored and pairneg records")
@@ -166,7 +185,7 @@ class UniDataset(Dataset):
             if self.max_samples is None or isinstance(self.max_samples, int):
                 max_samples = self.max_samples or len(dataset.hf_dataset)
             else:
-                max_samples = self.max_samples[dataset_basename] or len(dataset.hf_dataset)
+                max_samples = self.max_samples.get(dataset_basename, None) or len(dataset.hf_dataset)
             print(f"dataset: {dataset.name}, sample nums per epoch: {max_samples}")
             batch_size = self.batch_size
             num_samples = (max_samples // batch_size) * batch_size
@@ -190,6 +209,35 @@ class UniDataset(Dataset):
             text = self.query_prefix_map[task_name] + text
             text_pair = self.passage_prefix_map[task_name] + text_pair
             pair_records.append(PairScoredRecord(text=text, text_pair=text_pair, label=label))
+        return pair_records
+    
+    def get_pair_retri_scored_records(self, records, task_name, hf_dataset, batch_index):
+        min_num = 1000
+        for record in records:
+            min_num = min(min_num, len(record['text_pair']))
+        min_num = min(min_num, 8)
+        def process_retri_records(record, pair_num):
+            text = record['text']
+            text_pair = record['text_pair']
+            score = record['score']
+            add_num = 0
+            if len(text_pair) < pair_num:
+                add_num = pair_num - len(text_pair)
+                pair_num = len(text_pair) 
+            indices = random.sample(range(len(text_pair)), pair_num)
+            if add_num > 0:
+                add_indices = random.choices(range(len(text_pair)), k=add_num)
+                indices = indices + add_indices
+            
+            text_pair = [text_pair[i] for i in indices]
+            score = [round(score[i], 1) for i in indices]
+            return text, text_pair, score
+
+        pair_records = []
+        for record in records:
+            text, text_pair, score = process_retri_records(record, pair_num=min_num)
+            pair_records.append(PairRetriScoredRecord(text=text, text_pair=text_pair, label=score))
+        assert len(pair_records) == self.batch_size, 'error, current batch size not match !!!'
         return pair_records
 
     def get_pair_retri_contrast_records(self, records, task_name, hf_dataset, batch_index):
@@ -253,6 +301,8 @@ class UniDataset(Dataset):
             pair_records = self.get_pair_retri_contrast_records(records, task_name, hf_dataset, batch_index) 
         elif hf_dataset[0]['type'] == 'cosent':
             pair_records = self.get_pair_scored_records(records, task_name)
+        elif hf_dataset[0]['type'] == 'retri_cosent':
+            pair_records = self.get_pair_retri_scored_records(records, task_name, hf_dataset, batch_index)
         else:
             raise NotImplementedError('only support pair contrast and pair scored')
 

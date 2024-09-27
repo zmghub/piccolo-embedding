@@ -3,11 +3,53 @@ import argparse
 from flask import Flask, request, jsonify
 from sentence_transformers import SentenceTransformer
 import json
+from transformers import AutoModel, AutoTokenizer
+import torch
+import torch.nn.functional as F
+
+
+class MiniCPM(torch.nn.Module):
+    support_models = ["MiniCPM"]
+    def __init__(self, model_name):
+        super().__init__()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True, torch_dtype=torch.float16).to("cuda")
+        self.model.eval()
+
+    def weighted_mean_pooling(self, hidden, attention_mask):
+        attention_mask_ = attention_mask * attention_mask.cumsum(dim=1)
+        s = torch.sum(hidden * attention_mask_.unsqueeze(-1).float(), dim=1)
+        d = attention_mask_.sum(dim=1, keepdim=True).float()
+        reps = s / d
+        return reps
+
+    @torch.no_grad()
+    def encode(self, input_texts, normalize_embeddings=True):
+        batch_dict = self.tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors='pt', return_attention_mask=True).to("cuda")
+        
+        outputs = self.model(**batch_dict)
+        attention_mask = batch_dict["attention_mask"]
+        hidden = outputs.last_hidden_state
+
+        reps = self.weighted_mean_pooling(hidden, attention_mask)
+        if normalize_embeddings:
+            embeddings = F.normalize(reps, p=2, dim=1).detach().cpu().numpy()
+        else:
+            embeddings = reps.detach().cpu().numpy()
+        return embeddings
 
 class TextInferenceService:
     def __init__(self, model_path, port):
         # 实例化模型
-        self.model = SentenceTransformer(model_path)
+        minicpm_flag = False
+        for key in MiniCPM.support_models:
+            if key in model_path:
+                minicpm_flag = True
+                break
+        if minicpm_flag:
+            self.model = MiniCPM(model_path)
+        else:
+            self.model = SentenceTransformer(model_path)
         # 创建Flask应用实例
         self.app = Flask(__name__)
         # 设置服务器监听的端口

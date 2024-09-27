@@ -115,7 +115,8 @@ def main():
         use_mrl=model_args.use_mrl,
         extend_pe=model_args.extend_pe,
         max_length=model_args.max_length,
-        use_all_pair=model_args.use_all_pair
+        use_all_pair=model_args.use_all_pair,
+        mixcse=model_args.mixcse
     )
     model.embedder.encoder.config.pad_token_id = tokenizer.pad_token_id
     

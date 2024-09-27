@@ -17,3 +17,9 @@ class PairScoredRecord:
     text: str
     text_pair: str
     label: float
+
+@dataclass()
+class PairRetriScoredRecord:
+    text: str
+    text_pair: list
+    label: list

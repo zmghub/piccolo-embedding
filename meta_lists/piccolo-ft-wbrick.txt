@@ -1,3 +1,0 @@
-popular_items_query_retri.dataset 1
-popular_hardcase_retri.dataset 1
-brick_query_retri.dataset 1
